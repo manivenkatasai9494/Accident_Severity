@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4>Accident Severity Prediction</h4>
+                </div>
+                <div class="card-body">
+                    <form id="predictionForm">
+                        <!-- Location Information -->
+                        <div class="mb-4">
+                            <h4>Location Information</h4>
+                            <div class="form-group mb-3">
+                                <label for="location">Accident Location</label>
+                                <input type="text" class="form-control" id="location" name="location" 
+                                       placeholder="Enter location (e.g., Downtown Seattle, I-5 near Exit 167)" required>
+                                <small class="form-text text-muted">Enter the location where the accident occurred or is likely to occur</small>
+                            </div>
+                            <div class="form-group mb-3">
+                                <label for="distance">Distance (miles)</label>
+                                <input type="number" class="form-control" id="distance" name="distance" 
+                                       required min="0" max="100" step="0.1"
+                                       placeholder="e.g., 5.2">
+                                <small class="form-text text-muted">Enter distance in miles (0-100)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Traffic Conditions -->
+                        <div class="mb-4">
+                            <h4>Traffic Conditions</h4>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check mb-3">
+                                        <input type="checkbox" class="form-check-input" id="traffic_signal" name="traffic_signal" value="1">
+                                        <label class="form-check-label" for="traffic_signal">Traffic Signal Present</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mb-3">
+                                        <input type="checkbox" class="form-check-input" id="junction" name="junction" value="1">
+                                        <label class="form-check-label" for="junction">Junction Area</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check mb-3">
+                                        <input type="checkbox" class="form-check-input" id="railway" name="railway" value="1">
+                                        <label class="form-check-label" for="railway">Railway Crossing</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mb-3">
+                                        <input type="checkbox" class="form-check-input" id="nautical_twilight" name="nautical_twilight" value="1">
+                                        <label class="form-check-label" for="nautical_twilight">Nautical Twilight</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Predict Severity</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <!-- Location Map -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Location Map</h5>
+                    <div id="map" style="height: 300px;"></div>
+                </div>
+            </div>
+            
+            <!-- Weather Information -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Current Weather</h5>
+                    <div id="weatherInfo">
+                        <p class="text-muted">Enter a location to see current weather conditions.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Prediction Result -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Prediction Result</h5>
+            <div id="result" class="text-center">
+                <p class="lead">Enter accident details and click the button to see the prediction.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Prediction Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="predictionSummary"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmPrediction">Confirm & Predict</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Initialize Leaflet map -->
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script>
+    var map = L.map('map').setView([47.6062, -122.3321], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    var marker = L.marker([47.6062, -122.3321]).addTo(map);
+</script>
+
+<script>
+    // Handle form submission
+    document.getElementById('predictionForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Collect form data
+        const formData = {
+            location: document.getElementById('location').value,
+            distance: parseFloat(document.getElementById('distance').value),
+            traffic_signal: document.getElementById('traffic_signal').checked ? 1 : 0,
+            junction: document.getElementById('junction').checked ? 1 : 0,
+            railway: document.getElementById('railway').checked ? 1 : 0,
+            nautical_twilight: document.getElementById('nautical_twilight').checked ? 1 : 0
+        };
+        
+        // Show confirmation modal
+        const summary = document.getElementById('predictionSummary');
+        summary.innerHTML = `
+            <h6>Location:</h6>
+            <p>${formData.location}<br>
+            Distance: ${formData.distance} miles</p>
+            
+            <h6>Traffic Conditions:</h6>
+            <p>Traffic Signal: ${formData.traffic_signal ? 'Yes' : 'No'}<br>
+            Junction: ${formData.junction ? 'Yes' : 'No'}<br>
+            Railway: ${formData.railway ? 'Yes' : 'No'}<br>
+            Nautical Twilight: ${formData.nautical_twilight ? 'Yes' : 'No'}</p>
+            
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> Weather data will be fetched automatically for the specified location.
+            </div>
+        `;
+        
+        const modal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+        
+        // Store form data for later use
+        document.getElementById('confirmPrediction').onclick = function() {
+            modal.hide();
+            makePrediction(formData);
+        };
+        
+        modal.show();
+    });
+    
+    function makePrediction(data) {
+        // Show loading state
+        const result = document.getElementById('result');
+        result.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+        
+        // Make API request
+        fetch('/predict', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                result.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h4>Error</h4>
+                        <p>${data.error}</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Update weather information
+            const weatherInfo = document.getElementById('weatherInfo');
+            weatherInfo.innerHTML = `
+                <div class="weather-details">
+                    <p><strong>Temperature:</strong> ${data.weather_data.temperature}°F</p>
+                    <p><strong>Humidity:</strong> ${data.weather_data.humidity}%</p>
+                    <p><strong>Visibility:</strong> ${data.weather_data.visibility} miles</p>
+                    <p><strong>Wind Speed:</strong> ${data.weather_data.wind_speed} mph</p>
+                    <p><strong>Precipitation:</strong> ${data.weather_data.precipitation} inches</p>
+                    <p><strong>Conditions:</strong> ${data.weather_data.weather_description}</p>
+                </div>
+            `;
+            
+            // Display prediction result
+            result.innerHTML = `
+                <div class="alert alert-${getSeverityColor(data.severity)}">
+                    <h4>Predicted Severity: ${data.severity}</h4>
+                    <p>Confidence: ${data.confidence}%</p>
+                    
+                    <h5>Risk Factors:</h5>
+                    <ul>
+                        ${data.risk_factors.map(factor => `<li>${factor}</li>`).join('')}
+                    </ul>
+                    
+                    <h5>Recommendations:</h5>
+                    <ul>
+                        ${data.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+            
+            // Update map marker
+            map.eachLayer((layer) => {
+                if (layer instanceof L.Marker) {
+                    map.removeLayer(layer);
+                }
+            });
+            
+            // Add new marker at the location
+            L.marker([data.features[10], data.features[11]])
+                .bindPopup(`Severity: ${data.severity}<br>Confidence: ${data.confidence}%`)
+                .addTo(map);
+                
+            // Center map on the location
+            map.setView([data.features[10], data.features[11]], 13);
+        })
+        .catch(error => {
+            result.innerHTML = `
+                <div class="alert alert-danger">
+                    <h4>Error</h4>
+                    <p>Failed to make prediction. Please try again.</p>
+                </div>
+            `;
+        });
+    }
+    
+    function getSeverityColor(severity) {
+        switch(severity) {
+            case '5 - Very High': return 'danger';
+            case '4 - High': return 'warning';
+            case '3 - Moderate': return 'info';
+            case '2 - Low': return 'success';
+            case '1 - Very Low': return 'success';
+            default: return 'secondary';
+        }
+    }
+</script>
+{% endblock %} 

@@ -1,0 +1,16 @@
+flask
+numpy
+pandas
+scikit-learn
+joblib
+seaborn
+matplotlib
+plotly
+folium
+requests
+Pillow
+python-dotenv
+flask-sqlalchemy
+flask-login
+flask-wtf
+geopy

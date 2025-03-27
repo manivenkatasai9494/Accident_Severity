@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Real-time Weather Alert -->
+    <div id="weatherAlert" class="alert alert-info alert-dismissible fade show" role="alert">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <i class="fas fa-cloud-sun"></i>
+                <span id="currentWeather">Loading weather data...</span>
+            </div>
+            <div>
+                <span id="weatherDetails">Temperature: --°F | Humidity: --% | Wind: -- mph</span>
+            </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
+    <div class="row">
+        <!-- Key Metrics -->
+        <div class="col-md-3">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Total Accidents</h5>
+                    <h2 id="totalAccidents" class="text-primary">{{ total_accidents }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">High Severity</h5>
+                    <h2 id="highSeverity" class="text-danger">{{ severity_counts['4 - High'] + severity_counts['5 - Very High'] }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Avg Confidence</h5>
+                    <h2 id="avgConfidence" class="text-warning">{{ avg_confidence }}%</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Weather Impact</h5>
+                    <h2 id="weatherImpact" class="text-info">Visibility: {{ avg_visibility }}mi</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dangerous Time Periods -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Dangerous Time Periods</h5>
+                    <div class="row" id="dangerousPeriods">
+                        <div class="col-12 text-center">
+                            <p>Loading dangerous time periods...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Charts -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Accident Severity Distribution</h5>
+                    <canvas id="severityChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Accidents by Time of Day</h5>
+                    <canvas id="timeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Weather Impact on Accidents</h5>
+                    <canvas id="weatherChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Traffic Conditions</h5>
+                    <canvas id="trafficChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Accident Hotspots Map -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Accident Hotspots</h5>
+                    <div id="hotspotsMap" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Accidents Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Recent Accidents</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Location</th>
+                                    <th>Severity</th>
+                                    <th>Confidence</th>
+                                    <th>Weather</th>
+                                    <th>Traffic</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pred in predictions %}
+                                <tr>
+                                    <td>{{ pred.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>{{ "%.4f, %.4f"|format(pred.location.lat, pred.location.lon) }}</td>
+                                    <td>{{ pred.severity }}</td>
+                                    <td>{{ "%.1f"|format(pred.confidence) }}%</td>
+                                    <td>
+                                        Temp: {{ pred.weather.temperature }}°F<br>
+                                        Wind: {{ pred.weather.wind_speed }}mph<br>
+                                        Vis: {{ pred.weather.visibility }}mi
+                                    </td>
+                                    <td>
+                                        Dist: {{ pred.traffic.distance }}mi<br>
+                                        Signal: {{ "Yes" if pred.traffic.traffic_signal else "No" }}<br>
+                                        Junction: {{ "Yes" if pred.traffic.junction else "No" }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Initialize Leaflet map -->
+<script>
+    var map = L.map('hotspotsMap').setView([47.6062, -122.3321], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Add markers for hotspots
+    {% for hotspot in hotspots %}
+    L.marker([{{ hotspot.lat }}, {{ hotspot.lon }}])
+        .bindPopup('Count: {{ hotspot.count }}<br>Max Severity: {{ hotspot.max_severity }}')
+        .addTo(map);
+    {% endfor %}
+</script>
+
+<!-- Charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Initialize charts
+    var severityChart = new Chart(document.getElementById('severityChart'), {
+        type: 'pie',
+        data: {
+            labels: ['Very Low', 'Low', 'Moderate', 'High', 'Very High'],
+            datasets: [{
+                data: [
+                    {{ severity_counts['1 - Very Low'] }},
+                    {{ severity_counts['2 - Low'] }},
+                    {{ severity_counts['3 - Moderate'] }},
+                    {{ severity_counts['4 - High'] }},
+                    {{ severity_counts['5 - Very High'] }}
+                ],
+                backgroundColor: ['#28a745', '#90EE90', '#FFD700', '#FFA500', '#DC3545']
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+
+    var weatherChart = new Chart(document.getElementById('weatherChart'), {
+        type: 'bar',
+        data: {
+            labels: ['High Visibility', 'Low Visibility', 'High Wind', 'Precipitation'],
+            datasets: [{
+                label: 'Number of Accidents',
+                data: [0, 0, 0, 0],
+                backgroundColor: '#007bff'
+            }]
+        }
+    });
+
+    var timeChart = new Chart(document.getElementById('timeChart'), {
+        type: 'line',
+        data: {
+            labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+            datasets: [{
+                label: 'Accidents',
+                data: {{ time_analysis|tojson }},
+                borderColor: '#28a745',
+                tension: 0.1,
+                fill: false
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    var trafficChart = new Chart(document.getElementById('trafficChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Low', 'Medium', 'High'],
+            datasets: [{
+                data: [0, 0, 0],
+                backgroundColor: ['#28a745', '#ffc107', '#dc3545']
+            }]
+        }
+    });
+
+    // Update weather information
+    function updateWeather() {
+        fetch('/api/dashboard/weather')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const weather = data.weather;
+                    const weatherAlert = document.getElementById('weatherAlert');
+                    const currentWeather = document.getElementById('currentWeather');
+                    const weatherDetails = document.getElementById('weatherDetails');
+                    
+                    // Update weather text
+                    currentWeather.textContent = weather.description;
+                    weatherDetails.textContent = 
+                        `Temperature: ${Math.round(weather.temperature)}°F | ` +
+                        `Humidity: ${weather.humidity}% | ` +
+                        `Wind: ${Math.round(weather.wind_speed)} mph`;
+                    
+                    // Update alert color based on conditions
+                    if (weather.visibility < 5 || weather.wind_speed > 20) {
+                        weatherAlert.className = 'alert alert-warning alert-dismissible fade show';
+                    } else if (weather.precipitation > 0) {
+                        weatherAlert.className = 'alert alert-info alert-dismissible fade show';
+                    } else {
+                        weatherAlert.className = 'alert alert-success alert-dismissible fade show';
+                    }
+                }
+            })
+            .catch(error => console.error('Error updating weather:', error));
+    }
+
+    // Update recent accidents
+    function updateRecentAccidents() {
+        fetch('/api/dashboard/recent')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const tbody = document.getElementById('recentAccidents');
+                    tbody.innerHTML = '';
+                    
+                    data.recent_accidents.forEach(accident => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${new Date(accident.timestamp).toLocaleString()}</td>
+                            <td>${accident.location.lat.toFixed(4)}, ${accident.location.lng.toFixed(4)}</td>
+                            <td><span class="badge bg-${getSeverityColor(accident.severity)}">${accident.severity}</span></td>
+                            <td>${accident.confidence}%</td>
+                            <td>${formatWeather(accident.weather)}</td>
+                            <td>${formatTraffic(accident.traffic)}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            })
+            .catch(error => console.error('Error updating recent accidents:', error));
+    }
+
+    function getSeverityColor(severity) {
+        switch(severity) {
+            case 'High': return 'danger';
+            case 'Medium': return 'warning';
+            case 'Low': return 'success';
+            default: return 'secondary';
+        }
+    }
+
+    function formatWeather(weather) {
+        if (!weather) return 'N/A';
+        return `${Math.round(weather.temperature)}°F, ${weather.visibility.toFixed(1)}mi visibility`;
+    }
+
+    function formatTraffic(traffic) {
+        if (!traffic) return 'N/A';
+        return `<span class="badge bg-${getTrafficColor(traffic.congestion_level)}">${traffic.congestion_level}</span>`;
+    }
+
+    function getTrafficColor(level) {
+        switch(level) {
+            case 'High': return 'danger';
+            case 'Medium': return 'warning';
+            case 'Low': return 'success';
+            default: return 'secondary';
+        }
+    }
+
+    // Update dashboard data
+    function updateDashboard() {
+        // Update weather every 5 minutes
+        updateWeather();
+        
+        // Update recent accidents every 30 seconds
+        updateRecentAccidents();
+        
+        // Update other dashboard stats
+        fetch('/api/dashboard/stats')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const stats = data.stats;
+                    
+                    // Update key metrics
+                    document.getElementById('totalAccidents').textContent = stats.total_accidents;
+                    document.getElementById('highSeverity').textContent = stats.severity_distribution.High || 0;
+                    document.getElementById('avgConfidence').textContent = `${stats.avg_confidence}%`;
+                    document.getElementById('weatherImpact').textContent = `Visibility: ${stats.avg_visibility.toFixed(1)}mi`;
+                    
+                    // Update dangerous time periods
+                    const dangerousPeriodsDiv = document.getElementById('dangerousPeriods');
+                    dangerousPeriodsDiv.innerHTML = '';
+                    
+                    if (stats.dangerous_periods && stats.dangerous_periods.length > 0) {
+                        stats.dangerous_periods.forEach(period => {
+                            const col = document.createElement('div');
+                            col.className = 'col-md-4 mb-3';
+                            col.innerHTML = `
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title text-danger">${period.description}</h6>
+                                        <p class="card-text">
+                                            <strong>Time:</strong> ${period.hour}:00 - ${(period.hour + 1) % 24}:00<br>
+                                            <strong>High Severity Accidents:</strong> ${period.count}
+                                        </p>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-danger" 
+                                                 role="progressbar" 
+                                                 style="width: ${(period.count / stats.severity_distribution.High * 100)}%"
+                                                 aria-valuenow="${period.count}" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="${stats.severity_distribution.High}">
+                                                ${period.count}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            dangerousPeriodsDiv.appendChild(col);
+                        });
+                    } else {
+                        dangerousPeriodsDiv.innerHTML = `
+                            <div class="col-12 text-center">
+                                <p class="text-success">No dangerous time periods detected in recent data.</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // Update charts
+                    severityChart.data.datasets[0].data = [
+                        stats.severity_distribution.Low || 0,
+                        stats.severity_distribution.Medium || 0,
+                        stats.severity_distribution.High || 0
+                    ];
+                    severityChart.update();
+                    
+                    weatherChart.data.datasets[0].data = [
+                        stats.weather_impact.high_visibility,
+                        stats.weather_impact.low_visibility,
+                        stats.weather_impact.high_wind,
+                        stats.weather_impact.precipitation
+                    ];
+                    weatherChart.update();
+                    
+                    timeChart.data.datasets[0].data = Array.from({length: 24}, (_, i) => 
+                        stats.accidents_by_hour[i] || 0
+                    );
+                    timeChart.update();
+                    
+                    trafficChart.data.datasets[0].data = [
+                        stats.traffic_analysis.congestion_levels.Low || 0,
+                        stats.traffic_analysis.congestion_levels.Medium || 0,
+                        stats.traffic_analysis.congestion_levels.High || 0
+                    ];
+                    trafficChart.update();
+                    
+                    // Update hotspots map
+                    map.eachLayer((layer) => {
+                        if (layer instanceof L.Marker) {
+                            map.removeLayer(layer);
+                        }
+                    });
+                    
+                    Object.entries(stats.hotspots).forEach(([location, count]) => {
+                        const [lat, lng] = location.split(',').map(Number);
+                        L.marker([lat, lng])
+                            .bindPopup(`Accidents: ${count}`)
+                            .addTo(map);
+                    });
+                }
+            })
+            .catch(error => console.error('Error updating dashboard:', error));
+    }
+
+    // Update dashboard every 30 seconds
+    setInterval(updateDashboard, 30000);
+    // Update weather every 5 minutes
+    setInterval(updateWeather, 300000);
+    // Initial updates
+    updateDashboard();
+    updateWeather();
+</script>
+{% endblock %} 

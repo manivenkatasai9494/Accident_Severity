@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="hero-section text-center py-5 mb-5">
+    <div class="container">
+        <h1 class="display-4 mb-4">Accident Severity Prediction System</h1>
+        <p class="lead mb-4">Advanced AI-powered system for predicting accident severity and optimizing emergency response</p>
+        <a href="/predict" class="btn btn-primary btn-lg">Start Prediction</a>
+    </div>
+</div>
+
+<!-- Features Section -->
+<div class="row mb-5">
+    <div class="col-md-4">
+        <div class="feature-card text-center">
+            <img src="https://images.unsplash.com/photo-1581092160562-40aa08e78837?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" 
+                 alt="Real-time Prediction" class="feature-image mb-3">
+            <h3>Real-time Prediction</h3>
+            <p>Get instant severity predictions using advanced machine learning algorithms</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="feature-card text-center">
+            <img src="https://images.unsplash.com/photo-1581092160562-40aa08e78837?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" 
+                 alt="Emergency Response" class="feature-image mb-3">
+            <h3>Emergency Response</h3>
+            <p>Optimize emergency response times with accurate severity assessment</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="feature-card text-center">
+            <img src="https://images.unsplash.com/photo-1581092160562-40aa08e78837?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" 
+                 alt="Data Analytics" class="feature-image mb-3">
+            <h3>Data Analytics</h3>
+            <p>Comprehensive analytics and insights for better decision making</p>
+        </div>
+    </div>
+</div>
+
+<!-- Live Map Section -->
+<div class="row mb-5">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Live Accident Map</h5>
+                <div id="map" style="height: 400px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Alerts Section -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Recent High Severity Alerts</h5>
+                <div class="alert-list">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        High severity accident reported at Downtown
+                    </div>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Multiple vehicle collision on Highway 101
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Medium Severity Incidents</h5>
+                <div class="alert-list">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        Moderate accident at North Side intersection
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        Traffic incident reported on Main Street
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Initialize map
+    const map = L.map('map').setView([47.6062, -122.3321], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Add sample markers
+    const markers = [
+        { lat: 47.6062, lng: -122.3321, severity: 'High' },
+        { lat: 47.6152, lng: -122.3221, severity: 'Medium' },
+        { lat: 47.5962, lng: -122.3421, severity: 'Low' }
+    ];
+
+    markers.forEach(marker => {
+        const color = marker.severity === 'High' ? 'red' : 
+                     marker.severity === 'Medium' ? 'orange' : 'green';
+        L.marker([marker.lat, marker.lng], {
+            icon: L.divIcon({
+                className: 'custom-marker',
+                html: `<div class="marker-icon" style="background-color: ${color}"></div>`,
+                iconSize: [20, 20]
+            })
+        }).addTo(map);
+    });
+</script>
+{% endblock %} 

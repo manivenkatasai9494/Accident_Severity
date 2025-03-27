@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Emergency Alert Banner -->
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <strong>Emergency Alert System Active</strong> - Real-time monitoring of accident-prone areas and emergency services.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
+    <div class="row">
+        <!-- Emergency Services Map -->
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Emergency Services Map</h5>
+                    <div id="emergencyMap" style="height: 500px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Quick Actions</h5>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-danger" onclick="callEmergency('911')">
+                            <i class="fas fa-phone"></i> Call 911
+                        </button>
+                        <button class="btn btn-warning" onclick="callEmergency('police')">
+                            <i class="fas fa-shield-alt"></i> Call Police
+                        </button>
+                        <button class="btn btn-info" onclick="callEmergency('ambulance')">
+                            <i class="fas fa-ambulance"></i> Call Ambulance
+                        </button>
+                        <button class="btn btn-success" onclick="callEmergency('fire')">
+                            <i class="fas fa-fire"></i> Call Fire Department
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Alerts -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Active Alerts</h5>
+                    <div id="activeAlerts" class="list-group">
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Loading alerts...</h6>
+                                <small class="text-muted">Just now</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Emergency Services List -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Nearby Emergency Services</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Service</th>
+                                    <th>Distance</th>
+                                    <th>Status</th>
+                                    <th>Response Time</th>
+                                    <th>Contact</th>
+                                </tr>
+                            </thead>
+                            <tbody id="emergencyServices">
+                                <tr>
+                                    <td colspan="5" class="text-center">Loading emergency services...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Initialize Leaflet map -->
+<script>
+    var map = L.map('emergencyMap').setView([47.6062, -122.3321], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Custom icons for emergency services
+    var ambulanceIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41]
+    });
+
+    var policeIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41]
+    });
+
+    var fireIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41]
+    });
+</script>
+
+<!-- Emergency Services JavaScript -->
+<script>
+    function updateEmergencyServices() {
+        fetch('/api/emergency/services')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const services = data.services;
+                    
+                    // Clear existing markers
+                    map.eachLayer((layer) => {
+                        if (layer instanceof L.Marker) {
+                            map.removeLayer(layer);
+                        }
+                    });
+                    
+                    // Update emergency services table
+                    const tbody = document.getElementById('emergencyServices');
+                    tbody.innerHTML = '';
+                    
+                    services.forEach(service => {
+                        // Add marker to map
+                        let icon;
+                        switch(service.type) {
+                            case 'ambulance':
+                                icon = ambulanceIcon;
+                                break;
+                            case 'police':
+                                icon = policeIcon;
+                                break;
+                            case 'fire':
+                                icon = fireIcon;
+                                break;
+                            default:
+                                icon = ambulanceIcon;
+                        }
+                        
+                        L.marker([service.lat, service.lng], {icon: icon})
+                            .bindPopup(`
+                                <strong>${service.name}</strong><br>
+                                Type: ${service.type}<br>
+                                Distance: ${service.distance}km<br>
+                                Status: ${service.status}<br>
+                                Response Time: ${service.response_time}min
+                            `)
+                            .addTo(map);
+                        
+                        // Add row to table
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${service.name}</td>
+                            <td>${service.distance}km</td>
+                            <td><span class="badge bg-${getStatusColor(service.status)}">${service.status}</span></td>
+                            <td>${service.response_time}min</td>
+                            <td><a href="tel:${service.phone}" class="btn btn-sm btn-primary">Call</a></td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    // Update active alerts
+                    const alertsDiv = document.getElementById('activeAlerts');
+                    alertsDiv.innerHTML = '';
+                    
+                    data.alerts.forEach(alert => {
+                        const alertItem = document.createElement('div');
+                        alertItem.className = 'list-group-item';
+                        alertItem.innerHTML = `
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">${alert.title}</h6>
+                                <small class="text-muted">${formatTime(alert.timestamp)}</small>
+                            </div>
+                            <p class="mb-1">${alert.description}</p>
+                        `;
+                        alertsDiv.appendChild(alertItem);
+                    });
+                }
+            })
+            .catch(error => console.error('Error updating emergency services:', error));
+    }
+
+    function getStatusColor(status) {
+        switch(status.toLowerCase()) {
+            case 'available':
+                return 'success';
+            case 'busy':
+                return 'warning';
+            case 'unavailable':
+                return 'danger';
+            default:
+                return 'secondary';
+        }
+    }
+
+    function formatTime(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diff = now - date;
+        
+        if (diff < 60000) return 'Just now';
+        if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+        if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
+        return date.toLocaleDateString();
+    }
+
+    function callEmergency(service) {
+        // In a real application, this would integrate with actual emergency services
+        alert(`Calling ${service}...\nThis is a simulation. In a real emergency, please call 911.`);
+    }
+
+    // Update emergency services every 30 seconds
+    setInterval(updateEmergencyServices, 30000);
+    updateEmergencyServices();  // Initial update
+</script>
+{% endblock %} 
