@@ -8,12 +8,18 @@ import json
 import requests
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
+import os
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 
 # OpenWeatherMap API Configuration
 OPENWEATHER_API_KEY = "c8dda160bf9944492d159d19f2a0c82a"  # Replace with your actual API key
 OPENWEATHER_BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
+
+# Add Google Places API configuration
+GOOGLE_PLACES_API_KEY = "AIzaSyC9YdHb4Eo17MpYoJQMeORsDSSmwXpDJZ4"  # Replace with your actual API key
+GOOGLE_PLACES_BASE_URL = "https://maps.googleapis.com/maps/api/place"
 
 def get_coordinates_from_location(location):
     """Get coordinates from location name using geopy"""
@@ -452,6 +458,125 @@ def emergency():
     recent_emergencies.sort(key=lambda x: (x['severity'], x['timestamp']), reverse=True)
     
     return render_template('emergency.html', emergencies=recent_emergencies)
+
+def get_nearby_hospitals_google(lat, lon, radius=30000):  # 30km radius in meters
+    """Fetch nearby hospitals using Google Places API"""
+    try:
+        # First, search for hospitals
+        search_url = f"{GOOGLE_PLACES_BASE_URL}/nearbysearch/json"
+        params = {
+            'location': f"{lat},{lon}",
+            'radius': radius,
+            'type': 'hospital',
+            'key': GOOGLE_PLACES_API_KEY
+        }
+        
+        response = requests.get(search_url, params=params)
+        data = response.json()
+        
+        if data['status'] != 'OK':
+            return []
+            
+        hospitals = []
+        for place in data['results'][:10]:  # Get top 10 hospitals
+            # Get detailed information for each hospital
+            details_url = f"{GOOGLE_PLACES_BASE_URL}/details/json"
+            details_params = {
+                'place_id': place['place_id'],
+                'fields': 'name,formatted_address,formatted_phone_number,website,opening_hours,rating,user_ratings_total',
+                'key': GOOGLE_PLACES_API_KEY
+            }
+            
+            details_response = requests.get(details_url, params=details_params)
+            details_data = details_response.json()
+            
+            if details_data['status'] == 'OK':
+                hospital = {
+                    'name': place['name'],
+                    'lat': place['geometry']['location']['lat'],
+                    'lon': place['geometry']['location']['lng'],
+                    'address': place['vicinity'],
+                    'phone': details_data['result'].get('formatted_phone_number', 'N/A'),
+                    'website': details_data['result'].get('website', 'N/A'),
+                    'rating': place.get('rating', 'N/A'),
+                    'reviews': place.get('user_ratings_total', 0),
+                    'opening_hours': details_data['result'].get('opening_hours', {}).get('weekday_text', ['N/A']),
+                    'distance': calculate_distance(lat, lon, 
+                                               place['geometry']['location']['lat'],
+                                               place['geometry']['location']['lng'])
+                }
+                hospitals.append(hospital)
+        
+        # Sort hospitals by distance
+        hospitals.sort(key=lambda x: x['distance'])
+        return hospitals
+        
+    except Exception as e:
+        print(f"Error fetching hospitals from Google Places API: {str(e)}")
+        return []
+
+@app.route('/get_nearby_hospitals', methods=['POST'])
+def get_nearby_hospitals():
+    try:
+        data = request.get_json()
+        lat = float(data.get('lat'))
+        lon = float(data.get('lon'))
+        radius = float(data.get('radius', 30))  # Default 30km radius
+        
+        # Use Google Places API to get hospitals
+        hospitals = get_nearby_hospitals_google(lat, lon, radius * 1000)  # Convert km to meters
+        
+        return jsonify({
+            'success': True,
+            'hospitals': hospitals,
+            'radius': radius
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two points in kilometers using Haversine formula"""
+    R = 6371  # Earth's radius in kilometers
+    
+    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+    
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    
+    a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+    c = 2 * np.arcsin(np.sqrt(a))
+    
+    return R * c
+
+@app.route('/get_coordinates', methods=['POST'])
+def get_coordinates():
+    try:
+        data = request.get_json()
+        location = data.get('location', '')
+        
+        if not location:
+            return jsonify({'error': 'Location is required'}), 400
+            
+        # Get coordinates from location name
+        lat, lon = get_coordinates_from_location(location)
+        if not lat or not lon:
+            return jsonify({'error': 'Could not find coordinates for the given location'}), 400
+            
+        return jsonify({
+            'success': True,
+            'lat': lat,
+            'lon': lon
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
 
 if __name__ == '__main__':
     app.run(debug=True)
