@@ -97,6 +97,7 @@
                         <tr>
                             <th>ID</th>
                             <th>Hospital ID</th>
+                            <th>Hospital Name</th>
                             <th>Patient Name</th>
                             <th>Emergency Type</th>
                             <th>Status</th>
@@ -104,31 +105,8 @@
                             <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="requestsTable">
-                        {% for request in recent_requests %}
-                        <tr>
-                            <td>{{ request.id }}</td>
-                            <td>{{ request.hospital_id }}</td>
-                            <td>{{ request.patient_name }}</td>
-                            <td>{{ request.emergency_type }}</td>
-                            <td>
-                                <span class="badge bg-{{ 'success' if request.status == 'approved' else 'warning' if request.status == 'pending' else 'danger' }}">
-                                    {{ request.status }}
-                                </span>
-                            </td>
-                            <td>{{ request.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                            <td>
-                                <button class="btn btn-sm btn-success" onclick="approveRequest({{ request.id }})" 
-                                        {{ 'disabled' if request.status != 'pending' }}>
-                                    <i class="fas fa-check"></i> Approve
-                                </button>
-                                <button class="btn btn-sm btn-danger" onclick="rejectRequest({{ request.id }})"
-                                        {{ 'disabled' if request.status != 'pending' }}>
-                                    <i class="fas fa-times"></i> Reject
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
+                    <tbody id="requestsTableBody">
+                        <!-- Requests will be populated here -->
                     </tbody>
                 </table>
             </div>
@@ -152,6 +130,20 @@
 </div>
 
 <script>
+// Function to get status badge class
+function getStatusBadgeClass(status) {
+    switch(status) {
+        case 'approved':
+            return 'success';
+        case 'rejected':
+            return 'danger';
+        case 'pending':
+            return 'warning';
+        default:
+            return 'secondary';
+    }
+}
+
 // Function to refresh the entire dashboard
 function refreshDashboard() {
     // Show loading state
@@ -215,36 +207,55 @@ function refreshAccidents() {
 
 // Function to refresh requests table
 function refreshRequests() {
-    return fetch('/api/admin/requests')
-        .then(response => response.json())
+    fetch('/api/admin/requests')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
-                const tbody = document.getElementById('requestsTable');
-                tbody.innerHTML = data.requests.map(request => `
-                    <tr>
-                        <td>${request.id}</td>
-                        <td>${request.hospital_id}</td>
-                        <td>${request.patient_name}</td>
-                        <td>${request.emergency_type}</td>
-                        <td>
-                            <span class="badge bg-${request.status === 'approved' ? 'success' : request.status === 'pending' ? 'warning' : 'danger'}">
-                                ${request.status}
-                            </span>
-                        </td>
-                        <td>${request.timestamp}</td>
-                        <td>
-                            <button class="btn btn-sm btn-success" onclick="approveRequest(${request.id})" 
-                                    ${request.status !== 'pending' ? 'disabled' : ''}>
-                                <i class="fas fa-check"></i> Approve
-                            </button>
-                            <button class="btn btn-sm btn-danger" onclick="rejectRequest(${request.id})"
-                                    ${request.status !== 'pending' ? 'disabled' : ''}>
-                                <i class="fas fa-times"></i> Reject
-                            </button>
-                        </td>
-                    </tr>
-                `).join('');
+                const tbody = document.getElementById('requestsTableBody');
+                tbody.innerHTML = data.requests.map(request => {
+                    const statusClass = getStatusBadgeClass(request.status);
+                    return `
+                        <tr>
+                            <td>${request.id}</td>
+                            <td>${request.hospital_id}</td>
+                            <td>${request.hospital_name}</td>
+                            <td>${request.patient_name}</td>
+                            <td>${request.emergency_type}</td>
+                            <td><span class="badge bg-${statusClass}">${request.status}</span></td>
+                            <td>${request.timestamp}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info" onclick="viewRequestDetails('${request.id}')">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                <button class="btn btn-sm btn-success" onclick="approveRequest('${request.id}')">
+                                    <i class="fas fa-check"></i> Approve
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="rejectRequest('${request.id}')">
+                                    <i class="fas fa-times"></i> Reject
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                throw new Error(data.error || 'Failed to fetch requests');
             }
+        })
+        .catch(error => {
+            console.error('Error refreshing requests:', error);
+            const tbody = document.getElementById('requestsTableBody');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center text-danger">
+                        <i class="fas fa-exclamation-circle"></i> Error loading requests: ${error.message}
+                    </td>
+                </tr>
+            `;
         });
 }
 

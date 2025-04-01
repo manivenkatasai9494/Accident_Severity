@@ -196,7 +196,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="submitRequest(currentHospitalId)">Submit Request</button>
+                <button type="button" class="btn btn-primary" onclick="submitRequest()">Submit Request</button>
             </div>
         </div>
     </div>
@@ -439,7 +439,7 @@
                                             </ul>
                                         </div>
                                         <div>
-                                            <button class="btn btn-sm btn-primary me-2" onclick="showRequestForm('${hospital.id}')">
+                                            <button class="btn btn-sm btn-primary me-2" onclick="showRequestForm('${hospital.id}', '${hospital.name}')">
                                                 <i class="fas fa-ambulance"></i> Request Service
                                             </button>
                                             <a href="${hospital.website}" target="_blank" class="btn btn-sm btn-outline-primary">
@@ -492,7 +492,7 @@
                                         </ul>
                                     </div>
                                     <div>
-                                        <button class="btn btn-sm btn-primary me-2" onclick="showRequestForm('${hospital.id}')">
+                                        <button class="btn btn-sm btn-primary me-2" onclick="showRequestForm('${hospital.id}', '${hospital.name}')">
                                             <i class="fas fa-ambulance"></i> Request Service
                                         </button>
                                         <a href="${hospital.website}" target="_blank" class="btn btn-sm btn-outline-primary">
@@ -616,82 +616,19 @@
     });
 
     let currentHospitalId = null;
+    let currentHospitalName = null;
 
-    function showRequestForm(hospitalId) {
+    function showRequestForm(hospitalId, hospitalName) {
         currentHospitalId = hospitalId;
+        currentHospitalName = hospitalName;
         document.getElementById('requestStatus').style.display = 'none';
         document.getElementById('requestForm').reset();
         const modal = new bootstrap.Modal(document.getElementById('requestModal'));
         modal.show();
     }
 
-    // Update the refresh button functionality
-    document.getElementById('refreshRequests').addEventListener('click', function() {
-        const accidentLocation = document.getElementById('location').value;
-        if (!accidentLocation) {
-            alert('Please enter an accident location first');
-            return;
-        }
-
-        // Show loading state
-        document.getElementById('hospitalsList').innerHTML = `
-            <div class="text-center">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2">Refreshing hospital list and request statuses...</p>
-            </div>
-        `;
-
-        // Get coordinates and update hospitals list
-        fetch('/get_coordinates', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                location: accidentLocation
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                throw new Error(data.error || 'Could not find coordinates for the location');
-            }
-            
-            return fetch('/get_nearby_hospitals', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    lat: data.lat,
-                    lon: data.lon,
-                    radius: 30  // 30km radius
-                })
-            });
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                throw new Error(data.error || 'Failed to fetch hospitals');
-            }
-            updateHospitalsList(data.hospitals);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('hospitalsList').innerHTML = `
-                <div class="alert alert-danger">
-                    <h5>Error Refreshing Hospitals</h5>
-                    <p>${error.message}</p>
-                    <p>Please try again or contact support if the problem persists.</p>
-                </div>
-            `;
-        });
-    });
-
     // Update the submitRequest function to store the request ID
-    function submitRequest(hospitalId) {
+    function submitRequest() {
         const patientName = document.getElementById('patientName').value;
         const emergencyType = document.getElementById('emergencyType').value;
         const description = document.getElementById('description').value;
@@ -721,7 +658,8 @@
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                hospital_id: hospitalId,
+                hospital_id: currentHospitalId,
+                hospital_name: currentHospitalName,
                 patient_name: patientName,
                 emergency_type: emergencyType,
                 description: description,

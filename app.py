@@ -769,6 +769,7 @@ def get_requests():
         'requests': [{
             'id': req.id,
             'hospital_id': req.hospital_id,
+            'hospital_name': req.hospital_name,
             'patient_name': req.patient_name,
             'emergency_type': req.emergency_type,
             'description': req.description,
@@ -800,9 +801,31 @@ def submit_hospital_request():
         data = request.get_json()
         print("Received request data:", data)  # Debug print
         
+        # Get hospital name from Google Places API if not provided
+        if 'hospital_name' not in data:
+            # Use Google Places API to get hospital details
+            place_id = data['hospital_id']
+            details_url = f"{GOOGLE_PLACES_BASE_URL}/details/json"
+            details_params = {
+                'place_id': place_id,
+                'fields': 'name',
+                'key': GOOGLE_PLACES_API_KEY
+            }
+            
+            details_response = requests.get(details_url, params=details_params)
+            if details_response.status_code == 200:
+                details_data = details_response.json()
+                if details_data.get('result'):
+                    data['hospital_name'] = details_data['result'].get('name', 'Unknown Hospital')
+                else:
+                    data['hospital_name'] = 'Unknown Hospital'
+            else:
+                data['hospital_name'] = 'Unknown Hospital'
+        
         # Create new hospital request
         new_request = HospitalRequest(
             hospital_id=data['hospital_id'],
+            hospital_name=data['hospital_name'],
             patient_name=data['patient_name'],
             emergency_type=data['emergency_type'],
             description=data['description'],
@@ -941,6 +964,7 @@ class Accident(db.Model):
 class HospitalRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     hospital_id = db.Column(db.String(255), nullable=False)
+    hospital_name = db.Column(db.String(255), nullable=False)
     patient_name = db.Column(db.String(255), nullable=False)
     emergency_type = db.Column(db.String(50), nullable=False)
     description = db.Column(db.Text, nullable=False)
