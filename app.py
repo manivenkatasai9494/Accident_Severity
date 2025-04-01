@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response, session, redirect, url_for
 import joblib
 import pickle
 import numpy as np
@@ -11,8 +11,12 @@ from geopy.exc import GeocoderTimedOut
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
+import uuid
+from flask_sqlalchemy import SQLAlchemy
+from functools import wraps
 
 app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
 
 # OpenWeatherMap API Configuration
 OPENWEATHER_API_KEY = "c8dda160bf9944492d159d19f2a0c82a"  # Replace with your actual API key
@@ -32,6 +36,30 @@ gemini_model = genai.GenerativeModel('gemini-pro')
 
 # Chat history storage (in-memory for demo)
 chat_history = {}
+
+# In-memory storage for hospital requests (replace with database in production)
+hospital_requests = {}
+
+# Admin credentials (replace with proper authentication in production)
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin123"
+
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql+mysqlconnector://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@{os.getenv('MYSQL_HOST')}/{os.getenv('MYSQL_DB')}"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# Login required decorator
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('is_admin'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def is_admin(username, password):
+    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
 
 def get_coordinates_from_location(location):
     """Get coordinates from location name using geopy"""
@@ -114,7 +142,7 @@ except Exception as e:
 recent_predictions = []
 
 @app.route('/')
-def home():
+def index():
     return render_template('index.html')
 
 @app.route('/predict', methods=['GET', 'POST'])
@@ -303,6 +331,30 @@ def predict():
         if weather_data['precipitation'] > 0:
             recommendations.append("Deploy road maintenance crews")
         
+        # Store prediction in database
+        new_accident = Accident(
+            location=location,
+            severity=prediction,  # Store numeric severity
+            features={
+                'lat': lat,
+                'lon': lon,
+                'weather': weather_data,
+                'traffic': {
+                    'distance': float(data.get('distance', 0)),
+                    'traffic_signal': bool(data.get('traffic_signal', False)),
+                    'junction': bool(data.get('junction', False)),
+                    'railway': bool(data.get('railway', False)),
+                    'nautical_twilight': bool(data.get('nautical_twilight', False))
+                },
+                'risk_factors': risk_factors,
+                'recommendations': recommendations,
+                'confidence': round(final_confidence, 2)
+            }
+        )
+        
+        db.session.add(new_accident)
+        db.session.commit()
+        
         # Store prediction for dashboard
         prediction_data = {
             'timestamp': datetime.now(),
@@ -471,11 +523,11 @@ def emergency():
     
     return render_template('emergency.html', emergencies=recent_emergencies)
 
-def get_nearby_hospitals_google(lat, lon, radius=30000):  # 30km radius in meters
-    """Fetch nearby hospitals using Google Places API"""
+def get_nearby_hospitals_google(lat, lon, radius):
+    """Get nearby hospitals using Google Places API"""
     try:
-        # First, search for hospitals
-        search_url = f"{GOOGLE_PLACES_BASE_URL}/nearbysearch/json"
+        # First, try to get hospitals
+        hospitals_url = f"{GOOGLE_PLACES_BASE_URL}/nearbysearch/json"
         params = {
             'location': f"{lat},{lon}",
             'radius': radius,
@@ -483,48 +535,73 @@ def get_nearby_hospitals_google(lat, lon, radius=30000):  # 30km radius in meter
             'key': GOOGLE_PLACES_API_KEY
         }
         
-        response = requests.get(search_url, params=params)
+        print(f"Making Google Places API request with params: {params}")  # Debug print
+        
+        response = requests.get(hospitals_url, params=params)
+        print(f"Google Places API response status: {response.status_code}")  # Debug print
+        print(f"Google Places API response: {response.text}")  # Debug print
+        
+        if response.status_code != 200:
+            print(f"Error response from Google Places API: {response.text}")  # Debug print
+            return []
+            
         data = response.json()
         
-        if data['status'] != 'OK':
+        if 'error_message' in data:
+            print(f"Google Places API error: {data['error_message']}")  # Debug print
+            return []
+            
+        if 'results' not in data:
+            print("No results found in Google Places API response")  # Debug print
             return []
             
         hospitals = []
-        for place in data['results'][:10]:  # Get top 10 hospitals
-            # Get detailed information for each hospital
-            details_url = f"{GOOGLE_PLACES_BASE_URL}/details/json"
-            details_params = {
-                'place_id': place['place_id'],
-                'fields': 'name,formatted_address,formatted_phone_number,website,opening_hours,rating,user_ratings_total',
-                'key': GOOGLE_PLACES_API_KEY
-            }
-            
-            details_response = requests.get(details_url, params=details_params)
-            details_data = details_response.json()
-            
-            if details_data['status'] == 'OK':
-                hospital = {
-                    'name': place['name'],
-                    'lat': place['geometry']['location']['lat'],
-                    'lon': place['geometry']['location']['lng'],
-                    'address': place['vicinity'],
-                    'phone': details_data['result'].get('formatted_phone_number', 'N/A'),
-                    'website': details_data['result'].get('website', 'N/A'),
-                    'rating': place.get('rating', 'N/A'),
-                    'reviews': place.get('user_ratings_total', 0),
-                    'opening_hours': details_data['result'].get('opening_hours', {}).get('weekday_text', ['N/A']),
-                    'distance': calculate_distance(lat, lon, 
-                                               place['geometry']['location']['lat'],
-                                               place['geometry']['location']['lng'])
+        for place in data['results']:
+            try:
+                # Get detailed information for each hospital
+                place_id = place['place_id']
+                details_url = f"{GOOGLE_PLACES_BASE_URL}/details/json"
+                details_params = {
+                    'place_id': place_id,
+                    'fields': 'name,formatted_address,formatted_phone_number,website,opening_hours,rating,reviews,geometry',
+                    'key': GOOGLE_PLACES_API_KEY
                 }
-                hospitals.append(hospital)
+                
+                details_response = requests.get(details_url, params=details_params)
+                if details_response.status_code == 200:
+                    details_data = details_response.json()
+                    if details_data.get('result'):
+                        details = details_data['result']
+                        
+                        # Calculate distance
+                        distance = calculate_distance(lat, lon, place['geometry']['location']['lat'], place['geometry']['location']['lng'])
+                        
+                        hospital = {
+                            'id': place_id,
+                            'name': details.get('name', 'Unknown Hospital'),
+                            'address': details.get('formatted_address', 'Address not available'),
+                            'phone': details.get('formatted_phone_number', 'Phone not available'),
+                            'website': details.get('website', '#'),
+                            'rating': details.get('rating', 'N/A'),
+                            'reviews': details.get('reviews', []),
+                            'opening_hours': details.get('opening_hours', {}).get('weekday_text', []),
+                            'distance': distance,
+                            'lat': place['geometry']['location']['lat'],
+                            'lon': place['geometry']['location']['lng']
+                        }
+                        hospitals.append(hospital)
+                        print(f"Added hospital: {hospital['name']} at distance {distance:.2f}km")  # Debug print
+            except Exception as e:
+                print(f"Error processing hospital details: {str(e)}")  # Debug print
+                continue
         
         # Sort hospitals by distance
         hospitals.sort(key=lambda x: x['distance'])
+        print(f"Total hospitals found: {len(hospitals)}")  # Debug print
         return hospitals
         
     except Exception as e:
-        print(f"Error fetching hospitals from Google Places API: {str(e)}")
+        print(f"Error in get_nearby_hospitals_google: {str(e)}")  # Debug print
         return []
 
 @app.route('/get_nearby_hospitals', methods=['POST'])
@@ -643,5 +720,235 @@ def get_chat_history():
 def chat_widget():
     return render_template('chat_widget.html')
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session['is_admin'] = True
+            return redirect(url_for('admin_dashboard'))
+        else:
+            return render_template('login.html', error='Invalid credentials')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('is_admin', None)
+    return redirect(url_for('index'))
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    # Get statistics
+    total_accidents = db.session.query(Accident).count()
+    total_requests = db.session.query(HospitalRequest).count()
+    pending_requests = db.session.query(HospitalRequest).filter_by(status='pending').count()
+    
+    # Get recent accidents
+    recent_accidents = db.session.query(Accident).order_by(Accident.timestamp.desc()).limit(5).all()
+    
+    # Get recent requests
+    recent_requests = db.session.query(HospitalRequest).order_by(HospitalRequest.timestamp.desc()).limit(5).all()
+    
+    return render_template('admin_dashboard.html',
+                         total_accidents=total_accidents,
+                         total_requests=total_requests,
+                         pending_requests=pending_requests,
+                         recent_accidents=recent_accidents,
+                         recent_requests=recent_requests)
+
+@app.route('/api/admin/requests')
+@admin_required
+def get_requests():
+    requests = HospitalRequest.query.order_by(HospitalRequest.timestamp.desc()).all()
+    return jsonify({
+        'success': True,
+        'requests': [{
+            'id': req.id,
+            'hospital_id': req.hospital_id,
+            'patient_name': req.patient_name,
+            'emergency_type': req.emergency_type,
+            'description': req.description,
+            'contact_number': req.contact_number,
+            'status': req.status,
+            'timestamp': req.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        } for req in requests]
+    })
+
+@app.route('/api/admin/requests/<request_id>/approve', methods=['POST'])
+@admin_required
+def approve_request(request_id):
+    request = HospitalRequest.query.get_or_404(request_id)
+    request.status = 'approved'
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/admin/requests/<request_id>/reject', methods=['POST'])
+@admin_required
+def reject_request(request_id):
+    request = HospitalRequest.query.get_or_404(request_id)
+    request.status = 'rejected'
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/emergency/request', methods=['POST'])
+def submit_hospital_request():
+    try:
+        data = request.get_json()
+        print("Received request data:", data)  # Debug print
+        
+        # Create new hospital request
+        new_request = HospitalRequest(
+            hospital_id=data['hospital_id'],
+            patient_name=data['patient_name'],
+            emergency_type=data['emergency_type'],
+            description=data['description'],
+            contact_number=data['contact_number'],
+            status='pending'
+        )
+        
+        # Save to database
+        db.session.add(new_request)
+        db.session.commit()
+        
+        print("Request saved successfully")  # Debug print
+        return jsonify({
+            'success': True,
+            'request_id': new_request.id,
+            'message': 'Request submitted successfully'
+        })
+        
+    except Exception as e:
+        print("Error in submit_hospital_request:", str(e))  # Debug print
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/admin/stats')
+@admin_required
+def get_admin_stats():
+    try:
+        total_accidents = db.session.query(Accident).count()
+        total_requests = db.session.query(HospitalRequest).count()
+        pending_requests = db.session.query(HospitalRequest).filter_by(status='pending').count()
+        
+        return jsonify({
+            'success': True,
+            'total_accidents': total_accidents,
+            'total_requests': total_requests,
+            'pending_requests': pending_requests
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/admin/accidents')
+@admin_required
+def get_admin_accidents():
+    try:
+        accidents = db.session.query(Accident).order_by(Accident.timestamp.desc()).limit(10).all()
+        return jsonify({
+            'success': True,
+            'accidents': [{
+                'id': accident.id,
+                'location': accident.location,
+                'severity': accident.severity,
+                'timestamp': accident.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                'features': accident.features
+            } for accident in accidents]
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/admin/accidents/<int:accident_id>')
+@admin_required
+def get_accident_details(accident_id):
+    try:
+        accident = Accident.query.get_or_404(accident_id)
+        return jsonify({
+            'success': True,
+            'accident': {
+                'id': accident.id,
+                'location': accident.location,
+                'severity': accident.severity,
+                'timestamp': accident.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                'features': accident.features
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/emergency/request/<int:request_id>/status')
+def get_request_status(request_id):
+    try:
+        request = HospitalRequest.query.get_or_404(request_id)
+        return jsonify({
+            'success': True,
+            'status': request.status,
+            'timestamp': request.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/emergency/requests/status', methods=['GET'])
+def get_all_request_statuses():
+    try:
+        # Get all requests for the current user's session
+        requests = HospitalRequest.query.filter_by(session_id=session.get('session_id')).all()
+        
+        # Create a dictionary of hospital_id -> request status
+        request_statuses = {}
+        for req in requests:
+            request_statuses[req.hospital_id] = {
+                'status': req.status,
+                'timestamp': req.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            }
+        
+        return jsonify({
+            'success': True,
+            'requests': request_statuses
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Database Models
+class Accident(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    location = db.Column(db.String(255), nullable=False)
+    severity = db.Column(db.Integer, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    features = db.Column(db.JSON)
+
+class HospitalRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    hospital_id = db.Column(db.String(255), nullable=False)
+    patient_name = db.Column(db.String(255), nullable=False)
+    emergency_type = db.Column(db.String(50), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    contact_number = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), default='pending')
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)

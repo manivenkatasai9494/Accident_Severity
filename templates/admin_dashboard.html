@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header with Refresh Button -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Admin Dashboard</h2>
+        <button class="btn btn-primary" onclick="refreshDashboard()">
+            <i class="fas fa-sync-alt"></i> Refresh Dashboard
+        </button>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Accidents</h5>
+                    <h2 class="card-text" id="totalAccidents">{{ total_accidents }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Requests</h5>
+                    <h2 class="card-text" id="totalRequests">{{ total_requests }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Requests</h5>
+                    <h2 class="card-text" id="pendingRequests">{{ pending_requests }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Accidents -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Recent Accidents</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="refreshAccidents()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Location</th>
+                            <th>Severity</th>
+                            <th>Timestamp</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="accidentsTable">
+                        {% for accident in recent_accidents %}
+                        <tr>
+                            <td>{{ accident.id }}</td>
+                            <td>{{ accident.location }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'danger' if accident.severity >= 4 else 'warning' if accident.severity >= 3 else 'info' }}">
+                                    {{ accident.severity }}
+                                </span>
+                            </td>
+                            <td>{{ accident.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info" onclick="viewAccidentDetails({{ accident.id }})">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Hospital Requests -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Recent Hospital Requests</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="refreshRequests()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Hospital ID</th>
+                            <th>Patient Name</th>
+                            <th>Emergency Type</th>
+                            <th>Status</th>
+                            <th>Timestamp</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="requestsTable">
+                        {% for request in recent_requests %}
+                        <tr>
+                            <td>{{ request.id }}</td>
+                            <td>{{ request.hospital_id }}</td>
+                            <td>{{ request.patient_name }}</td>
+                            <td>{{ request.emergency_type }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if request.status == 'approved' else 'warning' if request.status == 'pending' else 'danger' }}">
+                                    {{ request.status }}
+                                </span>
+                            </td>
+                            <td>{{ request.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-success" onclick="approveRequest({{ request.id }})" 
+                                        {{ 'disabled' if request.status != 'pending' }}>
+                                    <i class="fas fa-check"></i> Approve
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="rejectRequest({{ request.id }})"
+                                        {{ 'disabled' if request.status != 'pending' }}>
+                                    <i class="fas fa-times"></i> Reject
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Accident Details Modal -->
+<div class="modal fade" id="accidentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Accident Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="accidentDetails">
+                <!-- Details will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Function to refresh the entire dashboard
+function refreshDashboard() {
+    // Show loading state
+    const refreshBtn = document.querySelector('.btn-primary');
+    const originalText = refreshBtn.innerHTML;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+    refreshBtn.disabled = true;
+
+    // Refresh all components
+    Promise.all([
+        refreshAccidents(),
+        refreshRequests(),
+        refreshStatistics()
+    ]).finally(() => {
+        // Restore button state
+        refreshBtn.innerHTML = originalText;
+        refreshBtn.disabled = false;
+    });
+}
+
+// Function to refresh statistics
+function refreshStatistics() {
+    return fetch('/api/admin/stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('totalAccidents').textContent = data.total_accidents;
+                document.getElementById('totalRequests').textContent = data.total_requests;
+                document.getElementById('pendingRequests').textContent = data.pending_requests;
+            }
+        });
+}
+
+// Function to refresh accidents table
+function refreshAccidents() {
+    return fetch('/api/admin/accidents')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const tbody = document.getElementById('accidentsTable');
+                tbody.innerHTML = data.accidents.map(accident => `
+                    <tr>
+                        <td>${accident.id}</td>
+                        <td>${accident.location}</td>
+                        <td>
+                            <span class="badge bg-${accident.severity >= 4 ? 'danger' : accident.severity >= 3 ? 'warning' : 'info'}">
+                                ${accident.severity}
+                            </span>
+                        </td>
+                        <td>${accident.timestamp}</td>
+                        <td>
+                            <button class="btn btn-sm btn-info" onclick="viewAccidentDetails(${accident.id})">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        });
+}
+
+// Function to refresh requests table
+function refreshRequests() {
+    return fetch('/api/admin/requests')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const tbody = document.getElementById('requestsTable');
+                tbody.innerHTML = data.requests.map(request => `
+                    <tr>
+                        <td>${request.id}</td>
+                        <td>${request.hospital_id}</td>
+                        <td>${request.patient_name}</td>
+                        <td>${request.emergency_type}</td>
+                        <td>
+                            <span class="badge bg-${request.status === 'approved' ? 'success' : request.status === 'pending' ? 'warning' : 'danger'}">
+                                ${request.status}
+                            </span>
+                        </td>
+                        <td>${request.timestamp}</td>
+                        <td>
+                            <button class="btn btn-sm btn-success" onclick="approveRequest(${request.id})" 
+                                    ${request.status !== 'pending' ? 'disabled' : ''}>
+                                <i class="fas fa-check"></i> Approve
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="rejectRequest(${request.id})"
+                                    ${request.status !== 'pending' ? 'disabled' : ''}>
+                                <i class="fas fa-times"></i> Reject
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        });
+}
+
+// Function to view accident details
+function viewAccidentDetails(id) {
+    fetch(`/api/admin/accidents/${id}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const accident = data.accident;
+                document.getElementById('accidentDetails').innerHTML = `
+                    <div class="mb-3">
+                        <h6>Location</h6>
+                        <p>${accident.location}</p>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Severity</h6>
+                        <span class="badge bg-${accident.severity >= 4 ? 'danger' : accident.severity >= 3 ? 'warning' : 'info'}">
+                            ${accident.severity}
+                        </span>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Timestamp</h6>
+                        <p>${accident.timestamp}</p>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Features</h6>
+                        <pre class="bg-light p-2">${JSON.stringify(accident.features, null, 2)}</pre>
+                    </div>
+                `;
+                new bootstrap.Modal(document.getElementById('accidentModal')).show();
+            }
+        });
+}
+
+// Function to approve request
+function approveRequest(id) {
+    if (!confirm('Are you sure you want to approve this request?')) return;
+    
+    fetch(`/api/admin/requests/${id}/approve`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            refreshRequests();
+            refreshStatistics();
+        }
+    });
+}
+
+// Function to reject request
+function rejectRequest(id) {
+    if (!confirm('Are you sure you want to reject this request?')) return;
+    
+    fetch(`/api/admin/requests/${id}/reject`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            refreshRequests();
+            refreshStatistics();
+        }
+    });
+}
+
+// Set up automatic refresh every 30 seconds
+setInterval(refreshDashboard, 30000);
+</script>
+
+<style>
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+.badge {
+    font-size: 0.875rem;
+    padding: 0.5em 0.75em;
+}
+.table th {
+    background-color: #f8f9fa;
+}
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %} 

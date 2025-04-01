@@ -86,6 +86,84 @@
             </div>
         </div>
     </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Nearby Hospitals (30km radius)</h5>
+            </div>
+            <div class="card-body">
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="hospitalSearch" placeholder="Search hospitals...">
+                    <button class="btn btn-primary" type="button" onclick="findHospitals()">Search</button>
+                </div>
+                <div id="hospitalsList" class="list-group">
+                    <!-- Hospitals will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Request Form Modal -->
+<div class="modal fade" id="requestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Request Emergency Service</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="requestForm">
+                    <input type="hidden" id="hospitalId">
+                    <div class="mb-3">
+                        <label class="form-label">Patient Name</label>
+                        <input type="text" class="form-control" id="patientName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Emergency Type</label>
+                        <select class="form-select" id="emergencyType" required>
+                            <option value="">Select emergency type</option>
+                            <option value="accident">Accident</option>
+                            <option value="medical">Medical Emergency</option>
+                            <option value="trauma">Trauma</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="description" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Contact Number</label>
+                        <input type="tel" class="form-control" id="contactNumber" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitRequest()">Submit Request</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Update Modal -->
+<div class="modal fade" id="statusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Request Status</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="statusMessage"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Initialize Leaflet map -->
@@ -227,5 +305,90 @@
     // Update emergency services every 30 seconds
     setInterval(updateEmergencyServices, 30000);
     updateEmergencyServices();  // Initial update
+</script>
+
+<script>
+function displayHospitals(hospitals) {
+    const hospitalsList = document.getElementById('hospitalsList');
+    hospitalsList.innerHTML = '';
+    
+    hospitals.forEach(hospital => {
+        const hospitalCard = document.createElement('div');
+        hospitalCard.className = 'list-group-item';
+        hospitalCard.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="mb-1">${hospital.name}</h6>
+                    <p class="mb-1">${hospital.address}</p>
+                    <small>Distance: ${hospital.distance.toFixed(1)} km</small>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-primary me-2" onclick="showRequestForm('${hospital.id}')">
+                        Request Service
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="callHospital('${hospital.phone}')">
+                        Call
+                    </button>
+                </div>
+            </div>
+        `;
+        hospitalsList.appendChild(hospitalCard);
+    });
+}
+
+function showRequestForm(hospitalId) {
+    document.getElementById('hospitalId').value = hospitalId;
+    const requestModal = new bootstrap.Modal(document.getElementById('requestModal'));
+    requestModal.show();
+}
+
+function submitRequest() {
+    const requestData = {
+        hospital_id: document.getElementById('hospitalId').value,
+        patient_name: document.getElementById('patientName').value,
+        emergency_type: document.getElementById('emergencyType').value,
+        description: document.getElementById('description').value,
+        contact_number: document.getElementById('contactNumber').value
+    };
+
+    fetch('/api/emergency/request', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Close request modal
+            bootstrap.Modal.getInstance(document.getElementById('requestModal')).hide();
+            
+            // Show status modal
+            document.getElementById('statusMessage').innerHTML = `
+                <div class="alert alert-success">
+                    Your request has been submitted successfully. Request ID: ${data.request_id}
+                </div>
+                <p>You will be notified when the hospital accepts your request.</p>
+            `;
+            const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
+            statusModal.show();
+            
+            // Clear form
+            document.getElementById('requestForm').reset();
+        } else {
+            throw new Error(data.error);
+        }
+    })
+    .catch(error => {
+        document.getElementById('statusMessage').innerHTML = `
+            <div class="alert alert-danger">
+                Error submitting request: ${error.message}
+            </div>
+        `;
+        const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
+        statusModal.show();
+    });
+}
 </script>
 {% endblock %} 

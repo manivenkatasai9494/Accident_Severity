@@ -128,9 +128,14 @@
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="card-title mb-0">Nearby Hospitals (30km radius)</h5>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="closeHospitals">
-                <i class="fas fa-times"></i>
-            </button>
+            <div>
+                <button type="button" class="btn btn-sm btn-outline-primary me-2" id="refreshRequests">
+                    <i class="fas fa-sync-alt"></i> Refresh Status
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="closeHospitals">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
         </div>
         <div class="mb-3">
             <div class="input-group">
@@ -143,6 +148,55 @@
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
+            </div>
+        </div>
+        <div id="requestStatus" class="mt-3" style="display: none;">
+            <div class="alert alert-info">
+                <h5>Request Status</h5>
+                <p id="requestStatusMessage"></p>
+                <div id="requestDetails" class="mt-2"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Request Form Modal -->
+<div class="modal fade" id="requestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Request Emergency Service</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="requestForm">
+                    <div class="mb-3">
+                        <label for="patientName" class="form-label">Patient Name</label>
+                        <input type="text" class="form-control" id="patientName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="emergencyType" class="form-label">Emergency Type</label>
+                        <select class="form-select" id="emergencyType" required>
+                            <option value="">Select emergency type</option>
+                            <option value="accident">Accident</option>
+                            <option value="medical">Medical Emergency</option>
+                            <option value="trauma">Trauma</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="contactNumber" class="form-label">Contact Number</label>
+                        <input type="tel" class="form-control" id="contactNumber" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="submitRequest(currentHospitalId)">Submit Request</button>
             </div>
         </div>
     </div>
@@ -337,93 +391,188 @@
     function updateHospitalsList(hospitals) {
         const hospitalsList = document.getElementById('hospitalsList');
         if (!hospitals || hospitals.length === 0) {
-            hospitalsList.innerHTML = '<p class="text-muted">No hospitals found nearby.</p>';
+            hospitalsList.innerHTML = `
+                <div class="alert alert-warning">
+                    <h5>No Hospitals Found</h5>
+                    <p>No hospitals were found in your area. Please try:</p>
+                    <ul>
+                        <li>Increasing the search radius</li>
+                        <li>Checking your location settings</li>
+                        <li>Moving to a different area</li>
+                    </ul>
+                </div>
+            `;
             return;
         }
 
-        hospitalsList.innerHTML = `
-            <div class="list-group">
-                ${hospitals.map(hospital => `
-                    <div class="list-group-item hospital-item" data-name="${hospital.name.toLowerCase()}">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <h6 class="mb-1">${hospital.name}</h6>
-                                <p class="mb-1"><i class="fas fa-map-marker-alt"></i> ${hospital.address}</p>
-                                <p class="mb-1"><i class="fas fa-route"></i> Distance: ${hospital.distance.toFixed(2)} km</p>
-                                <p class="mb-1"><i class="fas fa-phone"></i> Phone: ${hospital.phone}</p>
-                                <p class="mb-1"><i class="fas fa-star"></i> Rating: ${hospital.rating} (${hospital.reviews} reviews)</p>
-                                <p class="mb-1"><i class="fas fa-clock"></i> Hours:</p>
-                                <ul class="list-unstyled ms-3">
-                                    ${hospital.opening_hours.map(hour => `<li>${hour}</li>`).join('')}
-                                </ul>
-                            </div>
-                            <div>
-                                <a href="${hospital.website}" target="_blank" class="btn btn-sm btn-primary">
-                                    <i class="fas fa-globe"></i> Website
-                                </a>
-                            </div>
-                        </div>
+        // First, get all request statuses
+        fetch('/api/emergency/requests/status')
+            .then(response => response.json())
+            .then(data => {
+                const requestStatuses = data.requests || {};
+                
+                hospitalsList.innerHTML = `
+                    <div class="list-group">
+                        ${hospitals.map(hospital => {
+                            const requestStatus = requestStatuses[hospital.id];
+                            const statusBadge = requestStatus ? `
+                                <span class="badge ${getStatusBadgeClass(requestStatus.status)} ms-2">
+                                    ${getStatusText(requestStatus.status)}
+                                </span>
+                            ` : '';
+                            
+                            return `
+                                <div class="list-group-item hospital-item" data-name="${hospital.name.toLowerCase()}">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h6 class="mb-1">
+                                                ${hospital.name}
+                                                ${statusBadge}
+                                            </h6>
+                                            <p class="mb-1"><i class="fas fa-map-marker-alt"></i> ${hospital.address}</p>
+                                            <p class="mb-1"><i class="fas fa-route"></i> Distance: ${hospital.distance.toFixed(2)} km</p>
+                                            <p class="mb-1"><i class="fas fa-phone"></i> Phone: ${hospital.phone}</p>
+                                            <p class="mb-1"><i class="fas fa-star"></i> Rating: ${hospital.rating} (${hospital.reviews.length} reviews)</p>
+                                            <p class="mb-1"><i class="fas fa-clock"></i> Hours:</p>
+                                            <ul class="list-unstyled ms-3">
+                                                ${hospital.opening_hours.map(hour => `<li>${hour}</li>`).join('')}
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <button class="btn btn-sm btn-primary me-2" onclick="showRequestForm('${hospital.id}')">
+                                                <i class="fas fa-ambulance"></i> Request Service
+                                            </button>
+                                            <a href="${hospital.website}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-globe"></i> Website
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
-                `).join('')}
-            </div>
-        `;
+                `;
 
-        // Add search functionality
-        const searchInput = document.getElementById('hospitalSearch');
-        searchInput.addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
-            const hospitalItems = document.querySelectorAll('.hospital-item');
-            
-            hospitalItems.forEach(item => {
-                const hospitalName = item.dataset.name;
-                if (hospitalName.includes(searchTerm)) {
-                    item.style.display = '';
-                } else {
-                    item.style.display = 'none';
-                }
+                // Add search functionality
+                const searchInput = document.getElementById('hospitalSearch');
+                searchInput.addEventListener('input', function(e) {
+                    const searchTerm = e.target.value.toLowerCase();
+                    const hospitalItems = document.querySelectorAll('.hospital-item');
+                    
+                    hospitalItems.forEach(item => {
+                        const hospitalName = item.dataset.name;
+                        if (hospitalName.includes(searchTerm)) {
+                            item.style.display = '';
+                        } else {
+                            item.style.display = 'none';
+                        }
+                    });
+                });
+
+                // Update map with hospital markers
+                addHospitalMarkers(hospitals);
+            })
+            .catch(error => {
+                console.error('Error fetching request statuses:', error);
+                // Show hospitals without status if there's an error
+                hospitalsList.innerHTML = `
+                    <div class="list-group">
+                        ${hospitals.map(hospital => `
+                            <div class="list-group-item hospital-item" data-name="${hospital.name.toLowerCase()}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <h6 class="mb-1">${hospital.name}</h6>
+                                        <p class="mb-1"><i class="fas fa-map-marker-alt"></i> ${hospital.address}</p>
+                                        <p class="mb-1"><i class="fas fa-route"></i> Distance: ${hospital.distance.toFixed(2)} km</p>
+                                        <p class="mb-1"><i class="fas fa-phone"></i> Phone: ${hospital.phone}</p>
+                                        <p class="mb-1"><i class="fas fa-star"></i> Rating: ${hospital.rating} (${hospital.reviews.length} reviews)</p>
+                                        <p class="mb-1"><i class="fas fa-clock"></i> Hours:</p>
+                                        <ul class="list-unstyled ms-3">
+                                            ${hospital.opening_hours.map(hour => `<li>${hour}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-primary me-2" onclick="showRequestForm('${hospital.id}')">
+                                            <i class="fas fa-ambulance"></i> Request Service
+                                        </button>
+                                        <a href="${hospital.website}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-globe"></i> Website
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
             });
-        });
+    }
+
+    // Add helper functions for status display
+    function getStatusBadgeClass(status) {
+        switch(status) {
+            case 'approved':
+                return 'bg-success';
+            case 'rejected':
+                return 'bg-danger';
+            case 'pending':
+                return 'bg-warning';
+            default:
+                return 'bg-secondary';
+        }
+    }
+
+    function getStatusText(status) {
+        switch(status) {
+            case 'approved':
+                return 'Request Approved';
+            case 'rejected':
+                return 'Request Rejected';
+            case 'pending':
+                return 'Request Pending';
+            default:
+                return 'Unknown Status';
+        }
     }
 
     // Add hospital search functionality
     document.getElementById('findHospitals').addEventListener('click', function() {
-        const location = document.getElementById('location').value;
-        if (!location) {
-            alert('Please enter an accident location first.');
+        // Get the accident location from the input field
+        const accidentLocation = document.getElementById('location').value;
+        if (!accidentLocation) {
+            alert('Please enter an accident location first');
             return;
         }
 
         // Show loading state
-        const hospitalsCard = document.getElementById('hospitalsCard');
-        hospitalsCard.style.display = 'block';
         document.getElementById('hospitalsList').innerHTML = `
             <div class="text-center">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
+                <p class="mt-2">Finding hospitals near ${accidentLocation}...</p>
             </div>
         `;
 
-        // Get coordinates from location
+        // Show the hospitals card
+        document.getElementById('hospitalsCard').style.display = 'block';
+
+        // First get coordinates for the accident location
         fetch('/get_coordinates', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ location: location })
+            body: JSON.stringify({
+                location: accidentLocation
+            })
         })
         .then(response => response.json())
         .then(data => {
-            if (data.error) {
-                document.getElementById('hospitalsList').innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle"></i> ${data.error}
-                    </div>
-                `;
-                return;
+            if (!data.success) {
+                throw new Error(data.error || 'Could not find coordinates for the location');
             }
-
-            // Fetch nearby hospitals
+            
+            // Now get hospitals using the accident location coordinates
             return fetch('/get_nearby_hospitals', {
                 method: 'POST',
                 headers: {
@@ -432,27 +581,24 @@
                 body: JSON.stringify({
                     lat: data.lat,
                     lon: data.lon,
-                    radius: 30
+                    radius: 30  // 30km radius
                 })
             });
         })
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
-                addHospitalMarkers(data.hospitals);
-                updateHospitalsList(data.hospitals);
-            } else {
-                document.getElementById('hospitalsList').innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle"></i> ${data.error}
-                    </div>
-                `;
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to fetch hospitals');
             }
+            updateHospitalsList(data.hospitals);
         })
         .catch(error => {
+            console.error('Error:', error);
             document.getElementById('hospitalsList').innerHTML = `
                 <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle"></i> Error fetching hospitals. Please try again.
+                    <h5>Error Finding Hospitals</h5>
+                    <p>${error.message}</p>
+                    <p>Please try again or contact support if the problem persists.</p>
                 </div>
             `;
         });
@@ -468,6 +614,205 @@
             }
         });
     });
+
+    let currentHospitalId = null;
+
+    function showRequestForm(hospitalId) {
+        currentHospitalId = hospitalId;
+        document.getElementById('requestStatus').style.display = 'none';
+        document.getElementById('requestForm').reset();
+        const modal = new bootstrap.Modal(document.getElementById('requestModal'));
+        modal.show();
+    }
+
+    // Update the refresh button functionality
+    document.getElementById('refreshRequests').addEventListener('click', function() {
+        const accidentLocation = document.getElementById('location').value;
+        if (!accidentLocation) {
+            alert('Please enter an accident location first');
+            return;
+        }
+
+        // Show loading state
+        document.getElementById('hospitalsList').innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Refreshing hospital list and request statuses...</p>
+            </div>
+        `;
+
+        // Get coordinates and update hospitals list
+        fetch('/get_coordinates', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                location: accidentLocation
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.error || 'Could not find coordinates for the location');
+            }
+            
+            return fetch('/get_nearby_hospitals', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    lat: data.lat,
+                    lon: data.lon,
+                    radius: 30  // 30km radius
+                })
+            });
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to fetch hospitals');
+            }
+            updateHospitalsList(data.hospitals);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('hospitalsList').innerHTML = `
+                <div class="alert alert-danger">
+                    <h5>Error Refreshing Hospitals</h5>
+                    <p>${error.message}</p>
+                    <p>Please try again or contact support if the problem persists.</p>
+                </div>
+            `;
+        });
+    });
+
+    // Update the submitRequest function to store the request ID
+    function submitRequest(hospitalId) {
+        const patientName = document.getElementById('patientName').value;
+        const emergencyType = document.getElementById('emergencyType').value;
+        const description = document.getElementById('description').value;
+        const contactNumber = document.getElementById('contactNumber').value;
+
+        if (!patientName || !emergencyType || !description || !contactNumber) {
+            alert('Please fill in all fields');
+            return;
+        }
+
+        // Show loading state
+        document.getElementById('requestStatus').style.display = 'block';
+        document.getElementById('requestStatusMessage').innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Submitting request...</p>
+            </div>
+        `;
+        document.getElementById('requestDetails').innerHTML = '';
+
+        // Submit request
+        fetch('/api/emergency/request', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                hospital_id: hospitalId,
+                patient_name: patientName,
+                emergency_type: emergencyType,
+                description: description,
+                contact_number: contactNumber
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Store the request ID in the status div
+                document.getElementById('requestStatus').dataset.requestId = data.request_id;
+                
+                document.getElementById('requestStatusMessage').innerHTML = `
+                    <div class="alert alert-success">
+                        <h5>Request Submitted Successfully</h5>
+                        <p>Your request has been submitted and is pending approval.</p>
+                        <p>Request ID: ${data.request_id}</p>
+                    </div>
+                `;
+                
+                // Start polling for status updates
+                pollRequestStatus(data.request_id);
+                
+                // Close the modal after 3 seconds
+                setTimeout(() => {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('requestModal'));
+                    modal.hide();
+                    // Reset form
+                    document.getElementById('requestForm').reset();
+                }, 3000);
+            } else {
+                throw new Error(data.error || 'Failed to submit request');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('requestStatusMessage').innerHTML = `
+                <div class="alert alert-danger">
+                    <h5>Error Submitting Request</h5>
+                    <p>${error.message}</p>
+                    <p>Please try again or contact support if the problem persists.</p>
+                </div>
+            `;
+        });
+    }
+
+    function pollRequestStatus(requestId) {
+        const statusCheck = setInterval(() => {
+            fetch(`/api/emergency/request/${requestId}/status`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const status = data.status;
+                        const details = document.getElementById('requestDetails');
+                        
+                        if (status === 'approved') {
+                            details.innerHTML = `
+                                <div class="alert alert-success">
+                                    <h6>Request Approved!</h6>
+                                    <p>Your emergency request has been approved by the hospital.</p>
+                                    <p>Please proceed to the hospital immediately.</p>
+                                    <p>If you need assistance, please contact emergency services.</p>
+                                </div>
+                            `;
+                            clearInterval(statusCheck);
+                        } else if (status === 'rejected') {
+                            details.innerHTML = `
+                                <div class="alert alert-danger">
+                                    <h6>Request Rejected</h6>
+                                    <p>Your emergency request has been rejected.</p>
+                                    <p>Please try another hospital or contact emergency services directly.</p>
+                                </div>
+                            `;
+                            clearInterval(statusCheck);
+                        } else {
+                            details.innerHTML = `
+                                <div class="alert alert-warning">
+                                    <h6>Request Pending</h6>
+                                    <p>Your request is still being reviewed by the hospital.</p>
+                                    <p>Please wait for approval.</p>
+                                </div>
+                            `;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking status:', error);
+                    clearInterval(statusCheck);
+                });
+        }, 5000); // Check every 5 seconds
+    }
 </script>
 
 <!-- Add these styles -->
