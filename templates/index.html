@@ -87,6 +87,175 @@
         </div>
     </div>
 </div>
+
+<!-- Chat Widget -->
+<div class="chat-toggle" onclick="toggleChat()">
+    <i class="fas fa-comments"></i>
+    <span class="chat-badge">24/7</span>
+</div>
+<div class="chat-widget" id="chat-widget">
+    <div class="chat-header" onclick="toggleChat()">
+        Emergency Response Assistant
+        <span class="close-chat">×</span>
+    </div>
+    <div class="chat-messages" id="chat-messages">
+        <div class="message assistant-message">
+            Hello! I'm your emergency response assistant. Please describe the emergency situation, and I'll provide immediate guidance on what to do.
+        </div>
+    </div>
+    <div class="loading" id="loading">Thinking</div>
+    <div class="chat-input">
+        <input type="text" id="message-input" placeholder="Describe the emergency situation...">
+        <button id="send-button">Send</button>
+    </div>
+</div>
+
+<style>
+    .chat-toggle {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 60px;
+        height: 60px;
+        background: #ff4444;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 1000;
+        transition: transform 0.3s ease;
+    }
+
+    .chat-toggle:hover {
+        transform: scale(1.1);
+    }
+
+    .chat-toggle i {
+        font-size: 24px;
+    }
+
+    .chat-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        background: #00ff00;
+        color: white;
+        font-size: 12px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-weight: bold;
+    }
+
+    .chat-widget {
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        width: 350px;
+        height: 500px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 5px 25px rgba(0,0,0,0.2);
+        display: none;
+        z-index: 1000;
+        overflow: hidden;
+    }
+
+    .chat-header {
+        background: #ff4444;
+        color: white;
+        padding: 15px;
+        text-align: center;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .close-chat {
+        font-size: 24px;
+        cursor: pointer;
+    }
+
+    .chat-messages {
+        height: 350px;
+        overflow-y: auto;
+        padding: 20px;
+        background: #f8f9fa;
+    }
+
+    .message {
+        margin-bottom: 15px;
+        padding: 12px;
+        border-radius: 15px;
+        max-width: 85%;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .user-message {
+        background: #e3f2fd;
+        margin-left: auto;
+        border-bottom-right-radius: 5px;
+    }
+
+    .assistant-message {
+        background: white;
+        margin-right: auto;
+        border-bottom-left-radius: 5px;
+    }
+
+    .chat-input {
+        padding: 20px;
+        background: white;
+        border-top: 1px solid #eee;
+        display: flex;
+        gap: 10px;
+    }
+
+    #message-input {
+        flex: 1;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 25px;
+        font-size: 14px;
+        outline: none;
+    }
+
+    #send-button {
+        padding: 12px 25px;
+        background: #ff4444;
+        color: white;
+        border: none;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.3s ease;
+    }
+
+    #send-button:hover {
+        background: #ff3333;
+    }
+
+    .loading {
+        display: none;
+        text-align: center;
+        padding: 10px;
+        color: #666;
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+
+    .chat-toggle {
+        animation: pulse 2s infinite;
+    }
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -114,6 +283,62 @@
                 iconSize: [20, 20]
             })
         }).addTo(map);
+    });
+
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const chatMessages = document.getElementById('chat-messages');
+    const loading = document.getElementById('loading');
+    const chatWidget = document.getElementById('chat-widget');
+
+    function toggleChat() {
+        chatWidget.style.display = chatWidget.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function addMessage(content, isUser = false) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
+        messageDiv.textContent = content;
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function sendMessage() {
+        const message = messageInput.value.trim();
+        if (!message) return;
+
+        // Add user message to chat
+        addMessage(message, true);
+        messageInput.value = '';
+        loading.style.display = 'block';
+
+        try {
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message }),
+            });
+
+            const data = await response.json();
+            if (data.error) {
+                addMessage('Sorry, I encountered an error. Please try again.');
+            } else {
+                addMessage(data.response);
+            }
+        } catch (error) {
+            addMessage('Sorry, I encountered an error. Please try again.');
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
     });
 </script>
 {% endblock %} 

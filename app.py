@@ -10,6 +10,7 @@ from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 import os
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 app = Flask(__name__)
 
@@ -20,6 +21,17 @@ OPENWEATHER_BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
 # Add Google Places API configuration
 GOOGLE_PLACES_API_KEY = "AIzaSyC9YdHb4Eo17MpYoJQMeORsDSSmwXpDJZ4"  # Replace with your actual API key
 GOOGLE_PLACES_BASE_URL = "https://maps.googleapis.com/maps/api/place"
+
+# Load environment variables
+load_dotenv()
+
+# Configure Gemini Pro
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+genai.configure(api_key=GOOGLE_API_KEY)
+gemini_model = genai.GenerativeModel('gemini-pro')
+
+# Chat history storage (in-memory for demo)
+chat_history = {}
 
 def get_coordinates_from_location(location):
     """Get coordinates from location name using geopy"""
@@ -577,6 +589,59 @@ def get_coordinates():
             'success': False,
             'error': str(e)
         }), 400
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    try:
+        data = request.get_json()
+        message = data.get('message', '')
+        
+        if not message:
+            return jsonify({'error': 'Message is required'}), 400
+            
+        # Create a prompt for emergency advice
+        prompt = f"""You are an emergency response assistant. A user has reported an emergency situation: "{message}"
+
+Please provide immediate advice and steps to take. Include:
+1. First aid measures if applicable
+2. Emergency services to contact
+3. Important safety precautions
+4. What NOT to do
+5. Follow-up actions
+
+Keep the response clear, concise, and focused on immediate actions."""
+
+        # Generate response using Gemini Pro
+        response = gemini_model.generate_content(prompt)
+        
+        # Store in chat history
+        if 'messages' not in chat_history:
+            chat_history['messages'] = []
+        chat_history['messages'].append({
+            'role': 'user',
+            'content': message
+        })
+        chat_history['messages'].append({
+            'role': 'assistant',
+            'content': response.text
+        })
+        
+        return jsonify({
+            'response': response.text,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        
+    except Exception as e:
+        print(f"Chat Error: {str(e)}")
+        return jsonify({'error': 'Failed to generate response'}), 500
+
+@app.route('/chat_history', methods=['GET'])
+def get_chat_history():
+    return jsonify(chat_history.get('messages', []))
+
+@app.route('/chat_widget')
+def chat_widget():
+    return render_template('chat_widget.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
