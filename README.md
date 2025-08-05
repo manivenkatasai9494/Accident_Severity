@@ -1,128 +1,182 @@
-# 🚨 Accident Severity Prediction & Emergency Response System
+﻿﻿# Accident Severity Prediction And Resonse System
 
-An end-to-end **AI-powered emergency response coordination system** that predicts accident severity and notifies nearby hospitals in real time. Built using **Python**, **FastAPI**, **Flask**, and **ML models**, this project demonstrates real-world AI application, RESTful API design, and live system orchestration — aligning perfectly with CAWTech’s focus on agentic AI systems.
+A real-time accident severity prediction and emergency response coordination system that helps emergency services respond more effectively to accidents by predicting severity and coordinating with nearby hospitals.
 
----
+## Features
 
-## 🧠 Why This Project Matters
+- *Accident Severity Prediction*: Predicts accident severity (Low, Medium, High) based on various factors
+- *Real-time Hospital Coordination*: Automatically notifies and coordinates with nearby hospitals
+- *Emergency Response Dashboard*: Real-time status tracking and resource management
+- *Interactive Maps*: Visual representation of accident locations and nearby hospitals
+- *Real-time Status Updates*: Live tracking of hospital responses and emergency vehicle locations
+- *Chat Widget*: Built-in communication system for emergency coordination
+- *Admin Dashboard*: Comprehensive management interface for system administrators
 
-This project showcases how **AI/ML and systems engineering** can be combined to solve critical, real-world problems like accident response. The architecture reflects principles used in agent-based frameworks — responders (agents), prediction models (tools), and hospitals (nodes).
+## Prerequisites
 
-Aligned with the **CAWTech AI/ML Internship JD**:
+- Python 3.8 or higher
+- pip (Python package installer)
+- Google Maps API key (for maps functionality)
+- MySQL database
 
-✅ Built with FastAPI, ML, RESTful design  
-✅ Modular, scalable, production-grade architecture  
-✅ Clean GitHub repo, documented API endpoints  
-✅ Real-time AI system for real-world use case  
+## Installation
 
----
-
-## ⚙️ Core Features
-
-- **Accident Severity Prediction**: Using scikit-learn ML model (Low, Medium, High)
-- **Real-Time Hospital Coordination**: Auto alerts nearby hospitals with geolocation
-- **Emergency Dashboard**: Tracks all ongoing cases, vehicles, and hospitals
-- **FastAPI + Flask Hybrid Stack**: Frontend + backend separation
-- **Admin Control Panel**: Request management, analytics, and system overview
-
----
-
-## 🛠 Tech Stack
-
-| Layer             | Tools Used                                   |
-|------------------|-----------------------------------------------|
-| Language          | Python 3.8+                                   |
-| ML Modeling       | Scikit-learn, Pandas, NumPy                   |
-| Backend API       | FastAPI                                       |
-| Frontend UI       | Flask + HTML + Bootstrap                      |
-| Database          | MySQL + SQLAlchemy ORM                        |
-| Geolocation       | Google Maps API                               |
-| Deployment Ready  | ✅ Easily Dockerizable, Modular Codebase       |
-
----
-
-## 📂 Project Structure
-Accident_Severity/
-├── app.py # Flask app (entry point)
-├── api/ # FastAPI endpoints
-│ ├── routes.py # All API routes
-│ └── model_utils.py # ML model logic
-├── models.py # SQLAlchemy models
-├── templates/ # HTML files for UI
-│ ├── index.html # User UI
-│ ├── admin.html # Admin dashboard
-│ └── emergency.html # Emergency case dashboard
-├── static/ # CSS, JS, images
-├── requirements.txt # Python dependencies
-├── .env # Environment config
-└── README.md # Project documentation
-
-
----
-
-## 🔌 Installation & Setup
-
-```bash
-# 1. Clone repo
+1. Clone the repository:
+bash
 git clone https://github.com/manivenkatasai9494/Accident_Severity.git
 cd Accident_Severity
 
-# 2. Create virtual environment
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
 
-# 3. Install dependencies
+2. Create and activate a virtual environment (recommended):
+bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# Linux/Mac
+python3 -m venv venv
+source venv/bin/activate
+
+
+3. Install required packages:
+bash
 pip install -r requirements.txt
 
-# 4. Set up environment variables
-touch .env
+
+4. Set up environment variables:
+Create a .env file in the project root with the following variables:
 
 GOOGLE_MAPS_API_KEY=your_api_key_here
 DATABASE_URL=mysql://username:password@localhost/dbname
 SECRET_KEY=your_secret_key_here
 
-# 5. Initialize database
+
+5. Initialize the database:
+bash
 python -c "from app import app, db; app.app_context().push(); db.create_all()"
 
-# 6. Run the app
+
+## Running the Application
+
+1. Start the Flask application:
+bash
 python app.py
-Visit:
-
-Main: http://localhost:5000
-
-Admin: http://localhost:5000/admin (default: admin/admin123)
 
 
-🔗 API Endpoints (FastAPI)
+2. Access the application:
+- Main application: http://localhost:5000
+- Admin dashboard: http://localhost:5000/admin (username: admin, password: admin123)
 
-| Endpoint                      | Description                      |
-| ----------------------------- | -------------------------------- |
-| `POST /api/predict`           | Predict severity from input data |
-| `POST /api/emergency/request` | Create emergency case            |
-| `GET /api/emergency/status`   | Get status of a request          |
+3. To access from other devices on your network:
+- Find your computer's IP address:
+  - Windows: Open CMD and type ipconfig
+  - Linux/Mac: Open terminal and type ifconfig or ip addr
+- Access the application using: http://<your-ip-address>:5000
 
-
-🏥 Hospital APIs
-| Endpoint                     | Description                   |
-| ---------------------------- | ----------------------------- |
-| `POST /api/hospital/request` | Notify hospital of emergency  |
-| `GET /api/hospital/status`   | Get hospital load info        |
-| `PUT /api/hospital/update`   | Update availability/resources |
-
-🛡️ Admin APIs
-| Endpoint                        | Description                           |
-| ------------------------------- | ------------------------------------- |
-| `GET /api/admin/requests`       | Get all emergency requests            |
-| `PUT /api/admin/request/status` | Update status (resolved, in-progress) |
-| `GET /api/admin/analytics`      | View analytics and logs               |
-
-🔐 Security Measures
-✅ Role-based access (Admin, Hospital, User)
-
-✅ Secure sessions
-
-✅ Input validation and safe model inference
-
-✅ Environment variables and key encryption
+## Project Structure
 
 
+Accident_Severity/
+├── app.py                 # Main application file
+├── models.py             # Database models
+├── requirements.txt      # Python dependencies
+├── static/              # Static files (CSS, JS, images)
+├── templates/           # HTML templates
+│   ├── index.html      # Main page
+│   ├── admin.html      # Admin dashboard
+│   └── emergency.html  # Emergency services page
+└── README.md           # Project documentation
+
+
+## Key Features in Detail
+
+### 1. Accident Severity Prediction
+- Input factors:
+  - Number of vehicles
+  - Number of casualties
+  - Time of day
+  - Weather conditions
+  - Road type
+  - Speed limit
+- Output: Severity level (Low, Medium, High)
+
+### 2. Hospital Coordination
+- Automatic hospital notification
+- Real-time status tracking
+- Response time estimation
+- Resource availability monitoring
+
+### 3. Emergency Dashboard
+- Real-time accident monitoring
+- Hospital availability status
+- Emergency vehicle tracking
+- Interactive maps
+- Status updates
+
+### 4. Admin Features
+- User management
+- System monitoring
+- Emergency request management
+- Hospital coordination
+- Analytics and reporting
+
+## API Endpoints
+
+### Emergency Services
+- POST /api/predict: Predict accident severity
+- POST /api/emergency/request: Submit emergency request
+- GET /api/emergency/status: Get emergency status
+
+### Hospital Management
+- POST /api/hospital/request: Submit hospital request
+- GET /api/hospital/status: Get hospital status
+- PUT /api/hospital/update: Update hospital status
+
+### Admin
+- GET /api/admin/requests: Get all emergency requests
+- PUT /api/admin/request/status: Update request status
+- GET /api/admin/analytics: Get system analytics
+
+## Security Features
+
+- User authentication
+- Role-based access control
+- Secure API endpoints
+- Data encryption
+- Session management
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## Troubleshooting
+
+### Common Issues
+
+1. Database Connection Error
+   - Check database credentials in .env
+   - Ensure MySQL service is running
+   - Verify database exists
+
+2. API Key Issues
+   - Verify Google Maps API key is valid
+   - Check API key permissions
+   - Ensure key is properly set in .env
+
+3. Port Already in Use
+   - Check if another process is using port 5000
+   - Use a different port by modifying app.py
+
+### Getting Help
+
+- Check the documentation
+- Review existing issues
+- Create a new issue with detailed information
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
