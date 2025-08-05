@@ -19,6 +19,12 @@ A real-time accident severity prediction and emergency response coordination sys
 - Google Maps API key (for maps functionality)
 - MySQL database
 
+## Drive Link
+[Project Drive Folder](https://drive.google.com/file/d/1DiBCoQd0acFUVbEWX6END1SWnT7zmbnH/view)
+
+## Images
+![Project Architecture](Screenshot (243).png)
+
 ## Installation
 
 1. Clone the repository:
@@ -180,3 +186,4 @@ Accident_Severity/
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
